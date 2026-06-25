@@ -1,0 +1,14 @@
+# Secretos — NUNCA subir a GitHub
+.env
+*.env
+!.env.example
+
+# Go
+/tinta_reco_service
+*.exe
+*.out
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
