@@ -30,6 +30,10 @@ func runServer(pool *pgxpool.Pool) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+	// Endpoint TEMPORAL: crea la tabla recommended_books si no existe.
+	// Visítalo una sola vez desde el navegador: GET /setup
+	// (no expone datos sensibles, solo ejecuta un CREATE TABLE IF NOT EXISTS)
+	mux.HandleFunc("/setup", handleSetup(pool))
 
 	addr := ":" + port
 	fmt.Printf("servidor de recomendaciones escuchando en %s\n", addr)
@@ -113,7 +117,7 @@ func handleGenerate(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 
 		n, err := Regenerate(ctx, pool, userID, bookText, questions)
@@ -170,4 +174,40 @@ func parseQuestions(raw string) []string {
 	}
 	out = append(out, raw[start:])
 	return out
+}
+
+// handleSetup crea la tabla recommended_books si no existe. TEMPORAL: solo
+// para resolver el deploy inicial sin necesitar psql/consola SQL. Es seguro
+// dejarlo (usa IF NOT EXISTS, no borra ni modifica nada), pero después de la
+// entrega puedes quitarlo si quieres.
+func handleSetup(pool *pgxpool.Pool) http.HandlerFunc {
+	const ddl = `
+CREATE TABLE IF NOT EXISTS recommended_books (
+    book_id          UUID         PRIMARY KEY,
+    google_volume_id VARCHAR(64)  NOT NULL,
+    title            TEXT         NOT NULL,
+    authors          TEXT[]       NOT NULL DEFAULT '{}',
+    thumbnail        TEXT,
+    info_link        TEXT,
+    description      TEXT,
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_recommended_books_volume
+    ON recommended_books(google_volume_id);`
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		if _, err := pool.Exec(ctx, ddl); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{
+				"error creando tabla: " + err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, generateResponse{
+			Message: "tabla recommended_books creada (o ya existía)",
+		})
+	}
 }

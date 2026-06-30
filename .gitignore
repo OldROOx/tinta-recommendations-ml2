@@ -4,9 +4,11 @@
 !.env.example
 
 # Go
-/tinta_reco_service
 *.exe
 *.out
+
+# PDFs y extracciones de prueba (pueden pesar mucho / son datos del usuario)
+*_extraido.md
 
 # Editores / SO
 .vscode/
