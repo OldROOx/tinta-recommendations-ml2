@@ -60,9 +60,10 @@ type scoredBook struct {
 }
 
 // Regenerate sigue el flujo del diagrama:
-//   libro -> extractor de tema  ┐
-//   preguntas -> vector interés ┴-> perfil -> Google Books ->
-//   vectorización TF -> re-ranking coseno -> top 5 (K-Means) -> BD
+//
+//	libro -> extractor de tema  ┐
+//	preguntas -> vector interés ┴-> perfil -> Google Books ->
+//	vectorización TF -> re-ranking coseno -> top 5 (K-Means) -> BD
 func Regenerate(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID,
 	bookText string, questions []string) (int, error) {
 
@@ -183,6 +184,16 @@ func save(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, books []sco
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	// Borra las recomendaciones anteriores de este usuario antes de insertar
+	// las nuevas, para que cada libro subido REEMPLACE a las anteriores en vez
+	// de acumularse. Va dentro de la misma transacción: si algo falla, no se
+	// pierde nada.
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM recommendations WHERE user_id = $1`, userID,
+	); err != nil {
+		return err
+	}
 
 	for _, b := range books {
 		bookID := uuid.NewSHA1(bookNamespace, []byte(b.cand.VolumeID))
